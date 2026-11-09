@@ -1,8 +1,6 @@
 # Linux / Steam Proton (Experimental)
 
-This page documents an experimental way to run SoulSplitter with Windows LiveSplit on Linux when the game itself is launched through Steam Proton.
-
-It is **not a native Linux build** of LiveSplit or SoulSplitter. LiveSplit remains a Windows application running under Wine/Proton.
+SoulSplitter is a Windows LiveSplit component. On Linux, it can be used with the Windows version of LiveSplit running inside the same Proton/Wine environment as the game. This is not a native Linux or Wayland port.
 
 ## Tested configuration
 
@@ -14,105 +12,51 @@ The current setup has been tested with:
 - LiveSplit 1.8.37
 - Dark Souls Remastered (Steam App ID `570940`)
 
-Other Linux distributions, Proton versions, games, and desktop environments have not all been tested. The launcher can attach to a variety of Proton/Wine processes, but that does not add SoulSplitter game support where the component does not already implement it.
+Other distributions, Proton versions, games, and desktop environments have not all been tested. Using the launcher with another Proton/Wine game does not add SoulSplitter support for that game; the component must already support it.
 
-## Why a launcher is needed
+## Launching SoulSplitter on Linux
 
-Steam runs each Proton game in its own compatibility environment. Starting LiveSplit separately, even while selecting the same Wine prefix, can place it in a different container and Wine server. In that situation SoulSplitter may not be able to inspect the game's process.
+Use [LiveSplit-Proton](https://github.com/shandsj/LiveSplit-Proton), the separate, game-agnostic launcher for starting an existing LiveSplit installation inside a running Proton/Wine game's process environment.
 
-[LiveSplit-Proton](https://github.com/shandsj/LiveSplit-Proton) is a separate, game-agnostic launcher. It finds running Windows executable processes that expose a Wine/Proton prefix, asks which process to use, and starts LiveSplit inside that process's mount and PID namespaces. It also removes inherited `WINESERVERSOCKET` and `LD_PRELOAD` values that caused problems in the tested setup.
+The [LiveSplit-Proton README](https://github.com/shandsj/LiveSplit-Proton) is the source of truth for launcher requirements and setup, including the quick start, optional application-menu shortcut, configuration, permissions, and launcher troubleshooting. Those instructions are maintained in that repository rather than duplicated here.
 
-## Requirements
+At a high level:
 
-- A Steam game launched through Proton or a compatible Wine environment
-- An existing Windows LiveSplit installation
-- [LiveSplit-Proton](https://github.com/shandsj/LiveSplit-Proton)
-- Bash, `ps`, `realpath`, `grep`, `head`, `sed`, and `tr`
-- `nsenter` (provided by `util-linux`)
-- `sudo`
+1. Install LiveSplit and the SoulSplitter component using the normal [SoulSplitter installation instructions](../README.md#installation).
+2. Start the game through Steam with Proton.
+3. Follow the [LiveSplit-Proton quick start](https://github.com/shandsj/LiveSplit-Proton#quick-start) to launch LiveSplit in the game's environment.
 
-These tools are available by default on Bazzite. Other distributions may require installing the packages that provide them.
-
-## Install and configure the launcher
-
-1. Install LiveSplit normally and install the SoulSplitter component using the regular SoulSplitter installation instructions.
-2. Download or clone [LiveSplit-Proton](https://github.com/shandsj/LiveSplit-Proton).
-3. Make the launcher executable:
-
-   ```bash
-   chmod +x livesplit-proton-launcher.sh
-   ```
-
-4. Start your game through Steam, then run the launcher and point it at your existing LiveSplit installation:
-
-   ```bash
-   ./livesplit-proton-launcher.sh --livesplit "$HOME/Games/LiveSplit_1.8.37/LiveSplit.exe"
-   ```
-
-5. Choose the game's actual executable from the detected process list. Avoid selecting Steam helpers, launchers, or updater processes.
-6. Enter your Linux password when prompted. LiveSplit should open in the same Proton environment as the selected game.
-
-The launcher can also use the `LIVESPLIT_EXE` environment variable, a path saved in `~/.config/livesplit-proton/config`, or a nearby/common LiveSplit installation. See the LiveSplit-Proton README for details.
-
-### Optional application-menu shortcut
-
-LiveSplit-Proton includes an optional helper to create an application-menu shortcut. It does not install LiveSplit or any components:
-
-```bash
-chmod +x setup-desktop-entry.sh
-./setup-desktop-entry.sh --livesplit "$HOME/Games/LiveSplit_1.8.37/LiveSplit.exe"
-```
-
-Start the game first, then launch **LiveSplit (Proton)** from your application menu.
-
-When configuring a run, use the normal SoulSplitter settings for the game and set LiveSplit to compare against game time, as described in the main installation instructions.
+LiveSplit needs to run in the game's Proton/Wine environment for SoulSplitter to inspect the game process. Starting it independently in a different Wine environment can prevent the component from attaching.
 
 ## Dark Souls Remastered notes
 
-The tested Bazzite setup was stable with these Dark Souls 1 component settings:
+On the tested Bazzite setup, these Dark Souls 1 component settings avoided the configuration crash seen during testing:
 
 - **Start automatically:** disabled
 - **Reset inventory indices:** disabled
 - **Dropmod:** None
 
-Keep these settings disabled initially. Earlier testing produced a crash while opening the component settings with the related automatic-start/inventory-reset behavior enabled, but we did not isolate which option caused it. Treat these as conservative workarounds, not as proof that either option is incompatible with every Proton version.
+Keep these settings disabled initially. Earlier testing produced a crash while opening the component settings with the related automatic-start/inventory-reset behavior enabled, but the exact cause was not isolated. Treat these as conservative workarounds for the tested setup, not proof that either option is incompatible with every Proton version.
 
-## Permissions and security
-
-The launcher uses `sudo nsenter` to enter the selected game's mount and PID namespaces. It uses `--setuid follow` and `--setgid follow` so the launched Wine process follows the target process's user and group rather than running the game as root.
-
-The elevated operation is needed for namespace entry. Steam and the game should already be running as the normal desktop user. Review the launcher script before running it, particularly on systems with a different security model or process namespace configuration.
-
-The launcher inspects local process command lines and environment variables under `/proc`. It does not upload those values or send game data to a remote service.
+When configuring a run, use the normal SoulSplitter settings for the game and set LiveSplit to compare against game time, as described in the main installation instructions.
 
 ## Troubleshooting
 
-### No game processes are listed
-
-Start the game through Steam first and wait for the game's executable to appear. The launcher filters for processes whose command line includes a Windows `.exe` and whose environment contains `WINEPREFIX` or `STEAM_COMPAT_DATA_PATH`.
-
-### Several processes are listed
-
-Choose the actual game executable, not a launcher, crash handler, updater, or Steam helper. If unsure, close unrelated Proton games and try again.
-
-### The launcher cannot find the Wine loader
-
-The launcher reads the Wine loader path from the selected game's environment, or falls back to `PROTON_PATH/files/bin/wine64`. Some custom Wine setups may not expose the same environment variables or host-visible paths.
-
 ### LiveSplit opens but SoulSplitter cannot attach
 
-Confirm that LiveSplit was started through LiveSplit-Proton after the game was started. Starting LiveSplit with `protontricks-launch` in a separate process environment may create a second Wine server and will not use this namespace-based launch path.
+First confirm that LiveSplit was started through LiveSplit-Proton after the game was running. Then confirm that the selected process is the actual game and that SoulSplitter supports that game.
+
+For process discovery, Wine loader, namespace, or launcher errors, use the [LiveSplit-Proton troubleshooting guide](https://github.com/shandsj/LiveSplit-Proton#troubleshooting).
 
 ### Dark Souls Remastered closes when configuring the component
 
-Apply the Dark Souls Remastered settings in the section above. Re-enable automatic start or inventory-index reset only after testing them independently.
+Apply the Dark Souls Remastered settings listed above. Re-enable automatic start or inventory-index reset only after testing them independently.
 
-## Current limitations
+## Scope and limitations
 
-- This is an experimental integration tested on one Bazzite configuration.
+- This integration is experimental and has been tested on one Bazzite configuration.
 - It is not a native Linux or Wayland port.
-- LiveSplit-Proton handles process selection and namespace entry; it does not make every game supported by SoulSplitter.
-- The process scanner relies on Linux `/proc`, visible command lines, and Wine/Proton environment variables.
-- A successful build and automated test run do not replace testing against a live game process.
+- LiveSplit-Proton handles launching LiveSplit in the game's environment; it does not add game support to SoulSplitter.
+- A successful build and automated test run do not replace testing with a live game process.
 
-For general SoulSplitter configuration and game-specific troubleshooting, see the project [Wiki](https://github.com/FrankvdStam/SoulSplitter/wiki) and the main [README](../README.md).
+For general SoulSplitter configuration and game-specific help, see the project [README](../README.md) and [Wiki](https://github.com/FrankvdStam/SoulSplitter/wiki).
