@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=LiveSplit (Proton)
+Comment=Launch LiveSplit inside a running Steam Proton game
+Exec=/usr/bin/bash -lc "~/Games/LiveSplit_1.8.37/livesplit-proton-launcher.sh"
+Terminal=true
+Type=Application
+Categories=Game;

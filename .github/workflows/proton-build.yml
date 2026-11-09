@@ -1,0 +1,157 @@
+name: Proton compatibility build
+
+on:
+  push:
+    branches:
+      - linux-proton-support
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  launcher-lint:
+    name: Validate Linux launcher files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y shellcheck desktop-file-utils
+
+      - name: Check shell scripts
+        run: |
+          bash -n linux/launcher/install.sh
+          bash -n linux/launcher/livesplit-proton-launcher.sh
+          shellcheck --severity=warning linux/launcher/install.sh linux/launcher/livesplit-proton-launcher.sh
+
+      - name: Check desktop entry
+        run: desktop-file-validate linux/launcher/LiveSplit-Proton.desktop
+
+  build:
+    name: Build, test, and package
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: x86_64-pc-windows-msvc, i686-pc-windows-msvc
+
+      - name: Restore NuGet packages
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run tests
+        run: dotnet test -c Release --no-build
+
+      - name: Upload test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoulSplitter-proton-test-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            Components/SoulSplitter.dll
+            Components/SoulMemory.dll
+            Components/MaterialDesignColors.dll
+            Components/MaterialDesignThemes.Wpf.dll
+            Components/Microsoft.Xaml.Behaviors.dll
+            Components/soulmemory_rs_x64.dll
+            Components/soulmemory_rs_x86.dll
+            Components/soulmods_x64.dll
+            Components/soulmods_x86.dll
+            Components/launcher_x64.exe
+            Components/launcher_x86.exe
+
+      - name: Create all-in-one LiveSplit + SoulSplitter Proton bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundleRoot = Join-Path $env:RUNNER_TEMP 'SoulSplitter-Proton-Bundle'
+          $liveSplitDir = Join-Path $bundleRoot 'LiveSplit_1.8.37'
+          $componentsDir = Join-Path $liveSplitDir 'Components'
+          $licenseDir = Join-Path $bundleRoot 'LICENSES'
+          $liveSplitZip = Join-Path $env:RUNNER_TEMP 'LiveSplit_1.8.37.zip'
+          $liveSplitUrl = 'https://github.com/LiveSplit/LiveSplit/releases/download/1.8.37/LiveSplit_1.8.37.zip'
+          $expectedSha256 = '14BC8EF8DED9EF4033FB2F0CB6A152386D393127DA18A4DE14F096C5347AA991'
+
+          if (Test-Path $bundleRoot) { Remove-Item $bundleRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $liveSplitDir, $componentsDir, $licenseDir | Out-Null
+
+          Write-Host 'Downloading official LiveSplit 1.8.37 release...'
+          Invoke-WebRequest -Uri $liveSplitUrl -OutFile $liveSplitZip
+          $actualSha256 = (Get-FileHash -Path $liveSplitZip -Algorithm SHA256).Hash.ToUpperInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "LiveSplit archive SHA256 mismatch. Expected $expectedSha256, got $actualSha256"
+          }
+
+          Expand-Archive -LiteralPath $liveSplitZip -DestinationPath $liveSplitDir -Force
+          $componentNames = @(
+            'SoulSplitter.dll', 'SoulMemory.dll',
+            'MaterialDesignColors.dll', 'MaterialDesignThemes.Wpf.dll',
+            'Microsoft.Xaml.Behaviors.dll',
+            'soulmemory_rs_x64.dll', 'soulmemory_rs_x86.dll',
+            'soulmods_x64.dll', 'soulmods_x86.dll',
+            'launcher_x64.exe', 'launcher_x86.exe'
+          )
+          foreach ($name in $componentNames) {
+            $source = Join-Path (Join-Path $env:GITHUB_WORKSPACE 'Components') $name
+            if (!(Test-Path $source)) { throw "Build output is missing $source" }
+            Copy-Item -LiteralPath $source -Destination $componentsDir -Force
+          }
+
+          Copy-Item 'linux/launcher/README.txt' $bundleRoot
+          Copy-Item 'linux/launcher/install.sh' $bundleRoot
+          Copy-Item 'linux/launcher/livesplit-proton-launcher.sh' $bundleRoot
+          Copy-Item 'linux/launcher/LiveSplit-Proton.desktop' $bundleRoot
+          # Windows runners may check shell scripts out with CRLF. Normalize
+          # both scripts before they are placed in the Linux ZIP.
+          foreach ($scriptName in @('install.sh', 'livesplit-proton-launcher.sh')) {
+            $scriptPath = Join-Path $bundleRoot $scriptName
+            $scriptText = [System.IO.File]::ReadAllText($scriptPath)
+            $scriptText = $scriptText -replace "`r`n", "`n"
+            $scriptText = $scriptText -replace "`r", "`n"
+            [System.IO.File]::WriteAllText($scriptPath, $scriptText, [System.Text.UTF8Encoding]::new($false))
+          }
+          Copy-Item 'LICENSE' (Join-Path $licenseDir 'SoulSplitter-GPL-3.0.txt')
+          Copy-Item 'linux/launcher/LiveSplit-MIT-License.txt' (Join-Path $licenseDir 'LiveSplit-MIT-License.txt')
+          Copy-Item 'linux/launcher/licenses/MaterialDesignInXAML-MIT.txt' (Join-Path $licenseDir 'MaterialDesignInXAML-MIT.txt')
+          Copy-Item 'linux/launcher/licenses/Microsoft.Xaml.Behaviors-MIT.txt' (Join-Path $licenseDir 'Microsoft.Xaml.Behaviors-MIT.txt')
+          @"
+          SoulSplitter source for this binary package:
+          https://github.com/${{ github.repository }}/tree/${{ github.sha }}
+
+          LiveSplit 1.8.37 official release:
+          https://github.com/LiveSplit/LiveSplit/releases/tag/1.8.37
+          "@ | Set-Content -Path (Join-Path $bundleRoot 'SOURCE-CODE.txt') -Encoding utf8
+
+          $bundleZip = Join-Path $env:GITHUB_WORKSPACE 'SoulSplitter-Proton-Bundle.zip'
+          if (Test-Path $bundleZip) { Remove-Item $bundleZip -Force }
+          Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $bundleZip -CompressionLevel Optimal
+
+      - name: Upload all-in-one download
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoulSplitter-Proton-Bundle-${{ github.sha }}
+          path: SoulSplitter-Proton-Bundle.zip
+          if-no-files-found: error
+          retention-days: 30
