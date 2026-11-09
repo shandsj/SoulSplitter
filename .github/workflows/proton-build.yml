@@ -1,0 +1,58 @@
+name: Proton compatibility build
+
+on:
+  # Build the Proton work branch and publish a test artifact for manual validation.
+  push:
+    branches:
+      - linux-proton-support
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test SoulSplitter
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: x86_64-pc-windows-msvc, i686-pc-windows-msvc
+
+      - name: Restore NuGet packages
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run tests
+        run: dotnet test -c Release --no-build
+
+      - name: Upload test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoulSplitter-proton-test-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            Components/SoulSplitter.dll
+            Components/SoulMemory.dll
+            Components/MaterialDesignColors.dll
+            Components/MaterialDesignThemes.Wpf.dll
+            Components/Microsoft.Xaml.Behaviors.dll
+            Components/soulmemory_rs_x64.dll
+            Components/soulmemory_rs_x86.dll
+            Components/soulmods_x64.dll
+            Components/soulmods_x86.dll
+            Components/launcher_x64.exe
+            Components/launcher_x86.exe
