@@ -10,6 +10,7 @@
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
+  <a href="docs/PROTON.md">Linux / Proton</a> •
   <a href="https://github.com/FrankvdStam/SoulSplitter/wiki">Wiki</a> •
   <a href="#Contact">Contact</a> •
   <a href="#credits">Credits</a> •
@@ -76,6 +77,9 @@ Easily track arbitrary event flags for 100% style runs, or all bosses in Elden R
 # Installation
 
 Install [LiveSplit](https://github.com/LiveSplit/LiveSplit), enter the name of the souls-game you want to run and click "activate" - this will download and install everything for you. Click on "settings" to the right of it to configure it.
+
+
+Linux users running games through Steam Proton can use the experimental setup documented in [Linux / Steam Proton](docs/PROTON.md). This runs the Windows LiveSplit application inside the game's Proton environment; it is not a native Linux port.
 
 <p align="center">
     <img src="https://user-images.githubusercontent.com/37239092/214122849-99988bb0-6204-4348-94dc-333fc38c61f0.png"/>
