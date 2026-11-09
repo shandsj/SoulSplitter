@@ -53,6 +53,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <InternalsVisibleTo Include="SoulMemory.Tests" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\LICENSE">

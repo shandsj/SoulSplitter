@@ -486,8 +486,75 @@ public class Remastered : IDarkSouls1
     /// Returns true if the game currently is in Japanese
     /// </summary>
     /// <returns>bool</returns>
+    // Wine exports wine_get_version from ntdll. Checking for that export detects
+    // the compatibility layer without depending on host-specific environment variables.
+    private static bool IsRunningUnderWine()
+    {
+        var ntdll = NativeMethods.GetModuleHandleW("ntdll.dll");
+        return ntdll != IntPtr.Zero &&
+               NativeMethods.GetProcAddress(ntdll, "wine_get_version") != IntPtr.Zero;
+    }
+
+    private bool DetectJapaneseSaveDirectory()
+    {
+        if (!_steamId3.HasValue || _steamId3.Value == 0)
+        {
+            return false;
+        }
+
+        var myDocuments = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return DetectJapaneseSaveDirectory(myDocuments, _steamId3.Value.ToString());
+    }
+
+    internal static bool DetectJapaneseSaveDirectory(string myDocuments, string steamId)
+    {
+        if (string.IsNullOrWhiteSpace(myDocuments) || string.IsNullOrWhiteSpace(steamId) || steamId == "0")
+        {
+            return false;
+        }
+
+        var japaneseSave = Path.Combine(
+            myDocuments, "FromSoftware", "DARK SOULS REMASTERED", steamId, "DRAKS0005.sl2");
+        var standardSave = Path.Combine(
+            myDocuments, "NBGI", "DARK SOULS REMASTERED", steamId, "DRAKS0005.sl2");
+
+        var hasJapaneseSave = File.Exists(japaneseSave);
+        var hasStandardSave = File.Exists(standardSave);
+
+        // Prefer the save file that was written most recently. This handles
+        // systems where saves from both language folders are present.
+        if (hasJapaneseSave && hasStandardSave)
+        {
+            return File.GetLastWriteTimeUtc(japaneseSave) > File.GetLastWriteTimeUtc(standardSave);
+        }
+
+        if (hasJapaneseSave)
+        {
+            return true;
+        }
+
+        if (hasStandardSave)
+        {
+            return false;
+        }
+
+        // Before the first save is written, the game creates the selected
+        // directory. If neither directory exists, use the standard NBGI path.
+        var japaneseDirectory = Path.GetDirectoryName(japaneseSave)!;
+        var standardDirectory = Path.GetDirectoryName(standardSave)!;
+        return Directory.Exists(japaneseDirectory) && !Directory.Exists(standardDirectory);
+    }
+
     private bool IsJapanese()
     {
+        // The original region query executes code in the game process. That
+        // remote-thread path has not been validated under Wine/Proton, so use
+        // the save directory there. Keep the original query on native Windows.
+        if (IsRunningUnderWine())
+        {
+            return DetectJapaneseSaveDirectory();
+        }
+
         // Calls DarkSoulsRemastered.exe+C8820 (1.03, different address in 1.03.1) and then writes the value of eax
         // to a given address. If that value is 0, the game is in Japanese.
         // That function uses the steam64 api underneath so we have no other
